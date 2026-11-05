@@ -1,0 +1,87 @@
+{
+  "model": "InceptionV3",
+  "weights": "imagenet",
+  "dataset": "Medical MNIST (MedNIST)",
+  "classes": [
+    "AbdomenCT",
+    "BreastMRI",
+    "CXR",
+    "ChestCT",
+    "Hand",
+    "HeadCT"
+  ],
+  "image_size": 128,
+  "val_split": 0.2,
+  "seed": 42,
+  "validation_loss": 0.0007305538165383041,
+  "validation_accuracy": 0.9997455477714539,
+  "per_class_recall": {
+    "AbdomenCT": 0.999002493765586,
+    "BreastMRI": 1.0,
+    "CXR": 1.0,
+    "ChestCT": 0.9994908350305499,
+    "Hand": 1.0,
+    "HeadCT": 1.0
+  },
+  "head_val_accuracy": [
+    0.9969465732574463,
+    0.9963528513908386,
+    0.997540295124054,
+    0.9979643821716309
+  ],
+  "finetune_val_accuracy": [
+    0.9990670084953308,
+    0.9978795647621155,
+    0.9997455477714539
+  ],
+  "confusion_matrix": [
+    [
+      2003,
+      0,
+      0,
+      0,
+      0,
+      2
+    ],
+    [
+      0,
+      1812,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      2077,
+      0,
+      0,
+      0
+    ],
+    [
+      1,
+      0,
+      0,
+      1963,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      1967,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      1965
+    ]
+  ]
+}

@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Screen transmitter</title>
+  <style>
+    :root { color-scheme: light; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f4f1ea;
+      color: #1c1915;
+    }
+    #setup { max-width: 760px; margin: 0 auto; padding: 28px 20px 48px; }
+    h1 { font-size: 28px; font-weight: 650; margin: 0 0 8px; }
+    p { line-height: 1.45; }
+    .lede { margin-top: 0; max-width: 62ch; }
+    label { display: block; font-size: 13px; font-weight: 600; margin: 18px 0 8px; }
+    input[type="text"] {
+      width: 100%;
+      font: inherit;
+      font-size: 18px;
+      padding: 10px 12px;
+      border: 1px solid #cfc6b8;
+      border-radius: 10px;
+      background: white;
+    }
+    .choices { display: flex; flex-wrap: wrap; gap: 8px; }
+    .choices label {
+      margin: 0;
+      font-weight: 500;
+      border: 1px solid #cfc6b8;
+      background: white;
+      border-radius: 999px;
+      padding: 8px 14px;
+      cursor: pointer;
+    }
+    .choices input { position: absolute; opacity: 0; pointer-events: none; }
+    .choices input:checked + span,
+    .choices label:has(input:checked) { background: #1c1915; color: white; border-color: #1c1915; }
+    input[type="range"] { width: 100%; }
+    .stat { color: #5c564c; font-variant-numeric: tabular-nums; }
+    .preview {
+      position: relative;
+      height: 220px;
+      margin-top: 8px;
+      border-radius: 12px;
+      overflow: hidden;
+      background: black;
+    }
+    .preview img, #stage img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .preview .shade, #overlay {
+      position: absolute;
+      inset: 0;
+      background: black;
+      opacity: 0;
+      pointer-events: none;
+    }
+    button.primary, button.ghost {
+      font: inherit;
+      border: 0;
+      border-radius: 12px;
+      padding: 12px 18px;
+      cursor: pointer;
+    }
+    button.primary { background: #1c1915; color: white; font-size: 18px; margin-top: 22px; }
+    button.primary:disabled { opacity: 0.4; }
+    #after { display: none; margin-top: 18px; padding: 12px 14px; background: white; border-radius: 12px; }
+    code { font-size: 13px; }
+    .credit { color: #6e675c; font-size: 13px; }
+    #stage { display: none; position: fixed; inset: 0; background: black; }
+    #stage img { position: absolute; inset: 0; }
+    #hud {
+      position: absolute;
+      left: 24px;
+      top: 20px;
+      color: white;
+      font-size: 64px;
+      font-weight: 650;
+      text-shadow: 0 2px 12px black;
+      z-index: 2;
+    }
+    #stop {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      z-index: 3;
+      background: white;
+      color: #1c1915;
+    }
+  </style>
+</head>
+<body>
+  <section id="setup">
+    <h1>Screen transmitter</h1>
+    <p class="lede">The photograph stays still. A black layer on top of it grows and shrinks. Bit 0 pulses 5 times a second, bit 1 pulses 8 times a second. The iPhone reads which pulse it sees.</p>
+
+    <label for="message">Message</label>
+    <input id="message" type="text" value="HELLO" maxlength="40" autocomplete="off">
+
+    <label>Alpha difference</label>
+    <div class="choices" id="deltas">
+      <label><input type="radio" name="delta" value="0.1" checked><span>0.1 subtle</span></label>
+      <label><input type="radio" name="delta" value="0.5"><span>0.5 obvious</span></label>
+    </div>
+
+    <label>Distance from the phone to the screen</label>
+    <div class="choices">
+      <label><input type="radio" name="distance" value="20"><span>20 cm</span></label>
+      <label><input type="radio" name="distance" value="40" checked><span>40 cm</span></label>
+      <label><input type="radio" name="distance" value="80"><span>80 cm</span></label>
+      <label><input type="radio" name="distance" value="120"><span>120 cm</span></label>
+    </div>
+
+    <label for="duration">Time per bit: <span id="duration-label">0.40 s</span></label>
+    <input id="duration" type="range" min="0.2" max="0.8" step="0.05" value="0.4">
+    <p class="stat" id="plan"></p>
+    <p class="stat" id="notice"></p>
+
+    <div class="preview" aria-hidden="true">
+      <img src="background.jpg" alt="">
+      <div class="shade" id="preview-shade"></div>
+    </div>
+    <p class="credit">Background photograph: Fronalpstock, Wikimedia Commons. The preview is flickering at the alpha difference you picked.</p>
+
+    <button class="primary" id="start" type="button">Start</button>
+    <div id="after"></div>
+  </section>
+
+  <section id="stage">
+    <img src="background.jpg" alt="">
+    <div id="overlay"></div>
+    <div id="hud"></div>
+    <button class="ghost" id="stop" type="button">Stop</button>
+  </section>
+
+  <script src="bfsk.js"></script>
+  <script>
+    const COUNTDOWN = 3;
+    const messageInput = document.querySelector("#message");
+    const durationInput = document.querySelector("#duration");
+    const plan = document.querySelector("#plan");
+    const notice = document.querySelector("#notice");
+    const startButton = document.querySelector("#start");
+    const shade = document.querySelector("#preview-shade");
+    const overlay = document.querySelector("#overlay");
+    const hud = document.querySelector("#hud");
+    const stage = document.querySelector("#stage");
+    const setup = document.querySelector("#setup");
+    const after = document.querySelector("#after");
+
+    function selected(name) {
+      const node = document.querySelector(`input[name="${name}"]:checked`);
+      return node ? node.value : "";
+    }
+
+    function refreshPlan() {
+      const duration = Number(durationInput.value);
+      const delta = Number(selected("delta"));
+      document.querySelector("#duration-label").textContent = `${duration.toFixed(2)} s`;
+      let bits = [];
+      try {
+        bits = BFSK.encodeMessage(messageInput.value.trim());
+      } catch (error) {
+        plan.textContent = error.message;
+        startButton.disabled = true;
+        return;
+      }
+      startButton.disabled = !selected("distance");
+      const seconds = bits.length * duration;
+      const perfectRate = (1 / duration).toFixed(2);
+      plan.textContent = `${bits.length} bits, about ${seconds.toFixed(1)} seconds on screen. If every bit is received, the data rate is ${perfectRate} bits/s.`;
+      notice.textContent = delta >= 0.5
+        ? "At 0.5 the flicker is easy to see. That is the point of this setting."
+        : "At 0.1 the flicker is faint. Step closer if the phone cannot read it.";
+    }
+
+    let previewStart = performance.now();
+    function preview(now) {
+      const delta = Number(selected("delta")) || 0.1;
+      const t = (now - previewStart) / 1000;
+      shade.style.opacity = String((delta / 2) * (1 - Math.cos(2 * Math.PI * BFSK.f0 * t)));
+      requestAnimationFrame(preview);
+    }
+
+    let running = false;
+    let finishing = false;
+    let wakeLock = null;
+    let currentSession = null;
+
+    async function begin() {
+      if (location.protocol === "file:") {
+        after.style.display = "block";
+        after.textContent = "Open this page from the server, not as a file. The address is http://127.0.0.1:8080/transmitter.html";
+        return;
+      }
+      const message = messageInput.value.trim();
+      const bits = BFSK.encodeMessage(message);
+      const bitDuration = Number(durationInput.value);
+      const delta = Number(selected("delta"));
+      const distance = Number(selected("distance"));
+      const session = {
+        id: new Date().toISOString().replace(/[-:]/g, "").replace(/\..+/, "").replace("T", "-"),
+        message,
+        distance_cm: distance,
+        delta_alpha: delta,
+        f0: BFSK.f0,
+        f1: BFSK.f1,
+        bit_duration: bitDuration,
+        preamble: BFSK.preamble,
+        bits: bits.join(""),
+      };
+      const response = await fetch("/api/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(session),
+      });
+      if (!response.ok) throw new Error("Could not save this transmission");
+      const saved = await response.json();
+      session.id = saved.id;
+      currentSession = session;
+      finishing = false;
+      running = true;
+      setup.style.display = "none";
+      stage.style.display = "block";
+      overlay.style.opacity = "0";
+      const root = document.documentElement;
+      const request = root.requestFullscreen || root.webkitRequestFullscreen;
+      if (request) request.call(root);
+      try {
+        wakeLock = await navigator.wakeLock.request("screen");
+      } catch (error) {
+        wakeLock = null;
+      }
+      const started = performance.now();
+      const packet = bits.length * bitDuration;
+
+      function frame(now) {
+        if (!running) return;
+        const t = (now - started) / 1000;
+        if (t < COUNTDOWN) {
+          overlay.style.opacity = "0";
+          hud.textContent = String(Math.ceil(COUNTDOWN - t));
+        } else if (t < COUNTDOWN + packet) {
+          hud.textContent = "";
+          overlay.style.opacity = BFSK.alphaAt(t - COUNTDOWN, bits, bitDuration, delta).toFixed(4);
+        } else {
+          finish(session);
+          return;
+        }
+        requestAnimationFrame(frame);
+      }
+      requestAnimationFrame(frame);
+    }
+
+    async function finish(session, early) {
+      if (finishing) return;
+      finishing = true;
+      running = false;
+      overlay.style.opacity = "0";
+      hud.textContent = early ? "Stopped" : "Done";
+      if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen();
+      if (document.webkitFullscreenElement && document.webkitExitFullscreen) document.webkitExitFullscreen();
+      if (wakeLock) wakeLock.release();
+      await new Promise((resolve) => setTimeout(resolve, 700));
+      stage.style.display = "none";
+      setup.style.display = "block";
+      hud.textContent = "";
+      after.style.display = "block";
+      after.innerHTML = early
+        ? "Stopped before the message finished. Send it again when the phone is ready."
+        : `<strong>Sent “${session.message}”.</strong> If you recorded a video, AirDrop it here, then run:<br><code>.venv/bin/python part3/decode_video.py path/to/clip.MOV</code><br>Session ${session.id}. Decode this clip before you send the next one.`;
+    }
+
+    document.querySelector("#start").addEventListener("click", () => begin().catch((error) => {
+      after.style.display = "block";
+      after.textContent = error.message;
+    }));
+    document.querySelector("#stop").addEventListener("click", () => finish(currentSession || { message: "" }, true));
+    messageInput.addEventListener("input", refreshPlan);
+    durationInput.addEventListener("input", refreshPlan);
+    document.querySelectorAll("input[name='delta'], input[name='distance']").forEach((node) => {
+      node.addEventListener("change", refreshPlan);
+    });
+    refreshPlan();
+    requestAnimationFrame(preview);
+  </script>
+</body>
+</html>

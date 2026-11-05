@@ -1,0 +1,15 @@
+.venv/
+.mplconfig/
+.DS_Store
+__pycache__/
+output/frame_*.jpg
+output/preview*.png
+output/*.npy
+data/
+models/
+output/*.keras
+output/*.h5
+output/part2_train.log
+part3/certs/
+part3/testdata/
+part3/sessions/
